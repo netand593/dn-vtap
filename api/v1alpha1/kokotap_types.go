@@ -28,12 +28,14 @@ type KokotapSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Kokotap. Edit kokotap_types.go to remove/update
-	Foo       string `json:"foo,omitempty"`
-	PodName   string `json:"podName,omitempty"`
-	TargetIP  string `json:"destIp,omitempty"`
-	VxLANPort int32  `json:"vxlanPort,omitempty"`
-	VxLANID   int32  `json:"vxlanID,omitempty"`
+	// Pod's name in which the packet capture should be done
+	PodName string `json:"podName,omitempty"`
+	// IP address of the host which will receive the captured packets
+	TargetIP string `json:"destIp,omitempty"`
+	// VXLAN port number
+	VxLANPort int32 `json:"vxlanPort,omitempty"`
+	// VXLAN ID
+	VxLANID int32 `json:"vxlanID,omitempty"`
 }
 
 // KokotapStatus defines the observed state of Kokotap
