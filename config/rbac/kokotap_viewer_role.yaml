@@ -1,0 +1,27 @@
+# permissions for end users to view kokotaps.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: kokotap-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: dn-vtap
+    app.kubernetes.io/part-of: dn-vtap
+    app.kubernetes.io/managed-by: kustomize
+  name: kokotap-viewer-role
+rules:
+- apiGroups:
+  - networking.dn-lab.io
+  resources:
+  - kokotaps
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.dn-lab.io
+  resources:
+  - kokotaps/status
+  verbs:
+  - get

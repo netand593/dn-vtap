@@ -1,0 +1,12 @@
+apiVersion: networking.dn-lab.io/v1alpha1
+kind: Kokotap
+metadata:
+  labels:
+    app.kubernetes.io/name: kokotap
+    app.kubernetes.io/instance: kokotap-sample
+    app.kubernetes.io/part-of: dn-vtap
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: dn-vtap
+  name: kokotap-sample
+spec:
+  # TODO(user): Add fields here
