@@ -20,6 +20,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// MirrorType defines the type of traffic to be mirrored
+// +kubebuilder:validation:Enum=both;ingress;egress
+type MirrorType string
+
+const (
+	BothMirrorType    MirrorType = "both"
+	IngressMirrorType MirrorType = "ingress"
+	EgressMirrorType  MirrorType = "egress"
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
@@ -29,13 +39,22 @@ type KokotapSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Pod's name in which the packet capture should be done
-	PodName string `json:"podName,omitempty"`
+	PodName string `json:"podName"`
 	// IP address of the host which will receive the captured packets
-	TargetIP string `json:"destIp,omitempty"`
-	// VXLAN port number
-	VxLANPort int32 `json:"vxlanPort,omitempty"`
+	TargetIP string `json:"destIp"`
 	// VXLAN ID
-	VxLANID int32 `json:"vxlanID,omitempty"`
+	VxLANID int32 `json:"vxlanID"`
+	// Namespace of the pod
+	Namespace string `json:"namespace"`
+	// Type of mirror traffic
+	MirrorType string `json:"mirrorType"`
+
+	/* TODO
+	Check if it is needed to add kubeconfig file to the spec
+	*/
+
+	// +kubebuilder:validation:Enum=UDP;TCP
+
 }
 
 // KokotapStatus defines the observed state of Kokotap

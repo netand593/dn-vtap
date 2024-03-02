@@ -38,6 +38,12 @@ spec:
                 description: IP address of the host which will receive the captured
                   packets
                 type: string
+              mirrorType:
+                description: Type of mirror traffic
+                type: string
+              namespace:
+                description: Namespace of the pod
+                type: string
               podName:
                 description: Pod's name in which the packet capture should be done
                 type: string
@@ -45,10 +51,12 @@ spec:
                 description: VXLAN ID
                 format: int32
                 type: integer
-              vxlanPort:
-                description: VXLAN port number
-                format: int32
-                type: integer
+            required:
+            - destIp
+            - mirrorType
+            - namespace
+            - podName
+            - vxlanID
             type: object
           status:
             description: KokotapStatus defines the observed state of Kokotap
