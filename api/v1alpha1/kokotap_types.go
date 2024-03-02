@@ -20,6 +20,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// MirrorType defines the type of traffic to be mirrored
+// +kubebuilder:validation:Enum=both;ingress;egress
+type MirrorType string
+
+const (
+	BothMirrorType    MirrorType = "both"
+	IngressMirrorType MirrorType = "ingress"
+	EgressMirrorType  MirrorType = "egress"
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
@@ -28,14 +38,30 @@ type KokotapSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Kokotap. Edit kokotap_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Pod's name in which the packet capture should be done
+	PodName string `json:"podName"`
+	// IP address of the host which will receive the captured packets
+	TargetIP string `json:"destIp"`
+	// VXLAN ID
+	VxLANID int32 `json:"vxlanID"`
+	// Namespace of the pod
+	Namespace string `json:"namespace"`
+	// Type of mirror traffic
+	MirrorType string `json:"mirrorType"`
+
+	/* TODO
+	Check if it is needed to add kubeconfig file to the spec
+	*/
+
+	// +kubebuilder:validation:Enum=UDP;TCP
+
 }
 
 // KokotapStatus defines the observed state of Kokotap
 type KokotapStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 //+kubebuilder:object:root=true

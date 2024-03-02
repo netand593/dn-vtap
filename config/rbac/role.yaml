@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - networking.dn-lab.io
+  resources:
+  - kokotaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - networking.dn-lab.io
+  resources:
+  - kokotaps/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - networking.dn-lab.io
+  resources:
+  - kokotaps/status
+  verbs:
+  - get
+  - patch
+  - update
