@@ -19,17 +19,22 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
+	networkingv1alpha1 "github.com/netand593/dn-vtap/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+)
 
-	networkingv1alpha1 "github.com/netand593/dn-vtap/api/v1alpha1"
+const (
+	KokotapFinalizer = "kokotap.networking.dn-lab.io"
 )
 
 // KokotapReconciler reconciles a Kokotap object
 type KokotapReconciler struct {
 	client.Client
+	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
@@ -47,10 +52,25 @@ type KokotapReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := r.Log.WithValues("kokotap", req.NamespacedName)
 
 	// TODO(user): your logic here
-
+	kokotap := &networkingv1alpha1.Kokotap{}
+	err := r.Get(ctx, req.NamespacedName, kokotap)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("KokotapPod resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		log.Error(err, "Failed to get KokotapPod")
+		return ctrl.Result{}, err
+	}
+	/*
+		Define the logic for the control loop, what do we want to check for the status of KokotapPod
+		and hoiw will we handle that. Only deploying it, updating it and removing it?
+		Are there other actions to perform???????
+	*/
 	return ctrl.Result{}, nil
 }
 

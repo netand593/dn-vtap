@@ -30,7 +30,6 @@ const (
 	EgressMirrorType  MirrorType = "egress"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // KokotapSpec defines the desired state of Kokotap
@@ -39,7 +38,7 @@ type KokotapSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Pod's name in which the packet capture should be done
-	PodName string `json:"podName"`
+	TargetPodName string `json:"podName"`
 	// IP address of the host which will receive the captured packets
 	TargetIP string `json:"destIp"`
 	// VXLAN ID
@@ -52,16 +51,17 @@ type KokotapSpec struct {
 	/* TODO
 	Check if it is needed to add kubeconfig file to the spec
 	*/
-
-	// +kubebuilder:validation:Enum=UDP;TCP
-
 }
 
 // KokotapStatus defines the observed state of Kokotap
 type KokotapStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	// Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	ID string `json:"id,omitempty"`
+	/* TODO
+	What other fields do we need to control the status
+	*/
 }
 
 //+kubebuilder:object:root=true
