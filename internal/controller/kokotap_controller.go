@@ -18,11 +18,19 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 
 	"github.com/go-logr/logr"
 	networkingv1alpha1 "github.com/netand593/dn-vtap/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -54,16 +62,16 @@ type KokotapReconciler struct {
 func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("kokotap", req.NamespacedName)
 
-	// TODO(user): your logic here
+	// Create a new variable of type Kokotap
 	kokotap := &networkingv1alpha1.Kokotap{}
 	err := r.Get(ctx, req.NamespacedName, kokotap)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("KokotapPod resource not found. Ignoring since object must be deleted")
+			log.Info("Kokotap resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		log.Error(err, "Failed to get KokotapPod")
+		log.Error(err, "Failed to get Kokotap")
 		return ctrl.Result{}, err
 	}
 	/*
@@ -71,6 +79,25 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		and hoiw will we handle that. Only deploying it, updating it and removing it?
 		Are there other actions to perform???????
 	*/
+	// Check if Kokotap pod already exists, if not then create a new deployment
+	foundKokotapPod := &appsv1.Deployment{}
+	err = r.Get(ctx, types.NamespacedName{Name: kokotap.Name, Namespace: kokotap.Namespace}, foundKokotapPod)
+	if err != nil && errors.IsNotFound(err) {
+		// Define a new deployment
+		runtime, err := r.getContainerRuntime()
+		if err != nil {
+			fmt.Printf("Error getting the runtime")
+			return ctrl.Result{}, err
+		}
+
+		switch runtime {
+		case "docker":
+			// Generate deployment manifest for KokotapPod for Docker runtime
+		case "cri-o":
+			// Generate deployment manifest for KokotapPod for CRI-O runtime
+		}
+
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -79,4 +106,31 @@ func (r *KokotapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&networkingv1alpha1.Kokotap{}).
 		Complete(r)
+}
+
+func (r *KokotapReconciler) getContainerRuntime() (string, error) {
+	// Use in cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting in-cluster config: %v\n", err)
+		return "", err
+	}
+	// Create a Kubernetes clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating Kubernetes client: %v\n", err)
+		return "", err
+	}
+	// Get a list of nodes
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting nodes: %v\n", err)
+		return "", err
+	}
+
+	// We assume all nodes use the same runtime
+	nodeRuntime := nodes.Items[0].Status.NodeInfo.ContainerRuntimeVersion
+
+	return strings.Split(nodeRuntime, ":")[0], nil
+
 }
