@@ -44,17 +44,20 @@ spec:
               namespace:
                 description: Namespace of the pod
                 type: string
+              podInterface:
+                description: Pod Interface to do the tapping (mirror traffic)
+                type: string
               podName:
                 description: Pod's name in which the packet capture should be done
                 type: string
               vxlanID:
                 description: VXLAN ID
-                format: int32
-                type: integer
+                type: string
             required:
             - destIp
             - mirrorType
             - namespace
+            - podInterface
             - podName
             - vxlanID
             type: object
