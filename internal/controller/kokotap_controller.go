@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	errors "github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -131,7 +130,7 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 
 	// Get PodInfo
 
-	podInfo := getPodInfo(vtap)
+	podInfo := getPodInfo(vtap, ctx)
 
 	// Create the pod
 
@@ -255,20 +254,21 @@ func GetClientSet(clientset *kubernetes.Clientset) *KokotapReconciler {
 	}
 }
 
-func getPodInfo(vtap *networkingv1alpha1.Kokotap) *PodInfo {
+func getPodInfo(vtap *networkingv1alpha1.Kokotap, ctx context.Context) *PodInfo {
 
+	logger := log.FromContext(ctx)
 	//Get cluster config
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		fmt.Errorf("Failed to get cluster config %s", err)
+		logger.Error(err, "Failed to get cluster config %s")
 	}
 
 	// Create a new clientset
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		fmt.Errorf("Failed to create clientset %s", err)
+		logger.Error(err, "Failed to create clientset")
 	}
 
 	// Get the pod info
@@ -280,11 +280,11 @@ func getPodInfo(vtap *networkingv1alpha1.Kokotap) *PodInfo {
 
 	pod, err := clientset.CoreV1().Pods(TappedNamespace).Get(context.TODO(), TappedPodName, metav1.GetOptions{})
 	if err != nil {
-		fmt.Errorf("Failed to get pod info %w", err)
+		logger.Error(err, "Failed to get pod info")
 	}
 
 	if pod.Status.ContainerStatuses == nil {
-		fmt.Errorf("ContainerStatuses is nil %w", err)
+		logger.Error(err, "ContainerStatuses is nil")
 	}
 
 	containerID := pod.Status.ContainerStatuses[0].ContainerID
