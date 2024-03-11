@@ -50,6 +50,8 @@ type KokotapSpec struct {
 	MirrorType string `json:"mirrorType"`
 	// Pod Interface to do the tapping (mirror traffic)
 	PodInterface string `json:"podInterface"`
+	// Image to be used for the kokotap container
+	Image string `json:"image"`
 
 	/* TODO
 	Check if it is needed to add kubeconfig file to the spec

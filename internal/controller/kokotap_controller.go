@@ -18,12 +18,17 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +41,22 @@ import (
 // KokotapReconciler reconciles a Kokotap object
 type KokotapReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	clientset *kubernetes.Clientset
+}
+
+const (
+	// FinalizerName is the name of the finalizer added to resources for this controller
+	FinalizerName = "kokotap.networking.dn-lab.io"
+
+	//
+)
+
+// Pod Info that will be fetched, given the PodName
+type PodInfo struct {
+	containerID string
+	nodeName    string
+	nodeIP      string
 }
 
 //+kubebuilder:rbac:groups=networking.dn-lab.io,resources=kokotaps,verbs=get;list;watch;create;update;patch;delete
@@ -53,7 +73,30 @@ type KokotapReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
+
+	kokotapper := &networkingv1alpha1.Kokotap{}
+	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
+			return reconcile.Result{}, err
+		}
+		logger.Error(err, "Failed to fetch Kokotap from API Server")
+
+		return ctrl.Result{}, nil
+	}
+
+	// Check if the resource is being deleted
+
+	if !kokotapper.ObjectMeta.DeletionTimestamp.IsZero() {
+		return r.ReconcileDelete(ctx, req, kokotapper)
+	}
+
+	// Check if the resource is being updated
+
+	if kokotapper.ObjectMeta.Generation != kokotapper.Status.Conditions[0].ObservedGeneration {
+		return r.ReconcileUpdate(ctx, req, kokotapper)
+	}
 
 	// TODO(user): your logic here
 
@@ -61,21 +104,13 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
-	// Fetch the Kokotap instance
-	/* instance := &networkingv1alpha1.Kokotap{}
-	err := r.Get(ctx, req.NamespacedName, instance)
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
-	*/
-
-	// Logic shall be added here
 
 	var pod corev1.Pod
 	podName := vtap.Spec.PodName
+
+	// Get PodInfo
+
+	podInfo := getPodInfo(vtap)
 
 	// Check if the pod exists
 
@@ -92,24 +127,57 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 				},
 			},
 			Spec: corev1.PodSpec{
+				HostNetwork: true,
+				NodeName:    podInfo.nodeName,
+				Volumes: []corev1.Volume{
+					{
+						Name: "proc",
+						VolumeSource: corev1.VolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/proc",
+							},
+						},
+					},
+					{
+						Name: "var-crio",
+						VolumeSource: corev1.VolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/var/run/crio/crio.sock",
+							},
+						},
+					},
+				},
 				Containers: []corev1.Container{
 					{
 						Name:  "kokotap-network-tap",
-						Image: "quay.io/s1061123/kokotap:latest",
-
+						Image: vtap.Spec.Image,
+						SecurityContext: &corev1.SecurityContext{
+							Privileged: &[]bool{true}[0],
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{
+								Name:      "proc",
+								MountPath: "/host/proc",
+							},
+							{
+								Name:      "var-crio",
+								MountPath: "/var/run/crio/crio.sock",
+							},
+						},
+						Command: []string{"/bin/kokotap"},
 						Args: []string{
 							"--procprefix=/hostproc",
 							"mode",
 							"sender",
 							//TODO: Add a function to get containerID from podName
-							"--containerid=cri-o://bba6f1800fc4a5bcd9b7f5df68f083c17076250124cbd8ebaf9a0d1868b12b8c",
+							"--containerid=" + podInfo.containerID,
 							"--mirrortype=" + vtap.Spec.MirrorType,
 							"--ifname= mirror",
 							"--mirrorif=" + vtap.Spec.PodInterface,
 							"--pod=" + vtap.Spec.PodName,
 							"--namespace=" + vtap.Namespace,
 							//TODO: Add a function to get node's IP given podName (see kokotap)
-							"--vxlan-egressip=192.168.1.108",
+							"--vxlan-egressip=" + podInfo.nodeIP,
 							"--vxlan-ip=" + vtap.Spec.TargetIP,
 							"--vxlan-id=" + vtap.Spec.VxLANID,
 							"--vxlan-port=4789",
@@ -125,11 +193,67 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 	}
 	logger.Info("Created Pod successfully", "Pod.Namespace", vtap.Namespace, "Pod.Name", podName)
 	return ctrl.Result{}, nil
-	/* else if err != nil {
-		logger.Error(err, "Failed to get Pod")
-		return (ctrl.Result{}), err
+
+}
+
+func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
+	// Logic shall be added here
+	return ctrl.Result{}, nil
+}
+
+func (r *KokotapReconciler) ReconcileUpdate(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
+	// Logic shall be added here
+	return ctrl.Result{}, nil
+}
+
+// Get ClientSet from the client.Client reconciler
+
+func GetClientSet(clientset *kubernetes.Clientset) *KokotapReconciler {
+	return &KokotapReconciler{
+		clientset: clientset,
 	}
-	*/
+}
+
+func getPodInfo(vtap *networkingv1alpha1.Kokotap) *PodInfo {
+	//Get cluster config
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		fmt.Errorf("Failed to get cluster config %s", err)
+	}
+
+	// Create a new clientset
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		fmt.Errorf("Failed to create clientset %s", err)
+	}
+
+	// Get the pod info
+
+	TappedPodName := vtap.Spec.PodName
+	TappedNamespace := vtap.Spec.Namespace
+
+	// Get the pod info from the clientset
+
+	pod, err := clientset.CoreV1().Pods(TappedNamespace).Get(context.TODO(), TappedPodName, metav1.GetOptions{})
+	if err != nil {
+		fmt.Errorf("Failed to get pod info %w", err)
+	}
+
+	if pod.Status.ContainerStatuses == nil {
+		fmt.Errorf("ContainerStatuses is nil %w", err)
+	}
+
+	containerID := pod.Status.ContainerStatuses[0].ContainerID
+	nodeIP := pod.Status.HostIP
+	nodeName := pod.Spec.NodeName
+
+	return &PodInfo{
+		containerID: containerID,
+		nodeName:    nodeName,
+		nodeIP:      nodeIP,
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

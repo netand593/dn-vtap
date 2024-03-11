@@ -38,6 +38,9 @@ spec:
                 description: IP address of the host which will receive the captured
                   packets
                 type: string
+              image:
+                description: Image to be used for the kokotap container
+                type: string
               mirrorType:
                 description: Type of mirror traffic
                 type: string
@@ -55,6 +58,7 @@ spec:
                 type: string
             required:
             - destIp
+            - image
             - mirrorType
             - namespace
             - podInterface
