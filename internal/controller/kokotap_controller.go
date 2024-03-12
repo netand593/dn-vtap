@@ -97,7 +97,7 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}()
 	// Check if the resource is being deleted
 
-	if !kokotapper.ObjectMeta.DeletionTimestamp.IsZero() {
+	if kokotapper.ObjectMeta.DeletionTimestamp.IsZero() {
 		return r.ReconcileNormal(ctx, req, kokotapper)
 	}
 
