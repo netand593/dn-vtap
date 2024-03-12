@@ -18,16 +18,16 @@ package controller
 
 import (
 	"context"
+	"reflect"
 
 	errors "github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -42,8 +42,7 @@ import (
 // KokotapReconciler reconciles a Kokotap object
 type KokotapReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
-	clientset *kubernetes.Clientset
+	Scheme *runtime.Scheme
 }
 
 const (
@@ -105,8 +104,8 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 	// Check if the resource is being updated
 
-	if kokotapper.ObjectMeta.Generation != kokotapper.Status.Conditions[0].ObservedGeneration {
-		return r.ReconcileUpdate(ctx, req, kokotapper)
+	if !reflect.DeepEqual(kokotapper.Status, networkingv1alpha1.KokotapStatus{}) {
+		return r.ReconcileNormal(ctx, req, kokotapper)
 	}
 
 	// TODO(user): your logic here
@@ -126,13 +125,36 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 
 	logger := log.FromContext(ctx)
 	var pod corev1.Pod
+	var tappedpod corev1.Pod
 	tappedPodName := "kokotapped_" + vtap.Spec.PodName
 
-	// Get PodInfo
+	// Call GetPodInfo to get the pod info
 
-	podInfo := getPodInfo(vtap, ctx)
+	podInfo := r.GetPodInfo(vtap, ctx)
 
-	// Create the pod
+	// Get tappedpod and update labels
+
+	err := r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Namespace}, &tappedpod)
+	if err != nil {
+		logger.Error(err, "Failed to get Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+	}
+
+	// Add the label to the pod
+
+	if tappedpod.Labels == nil {
+		tappedpod.Labels = make(map[string]string)
+	}
+	tappedpod.Labels["dn-vtap"] = "tapped"
+
+	// Update the pod
+
+	if err := r.Update(ctx, &tappedpod); err != nil {
+		logger.Error(err, "Failed to update Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+		return pod, err
+	}
+	logger.Info("Updated Pod successfully", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+
+	// Create the pod running kokotap_pod binary
 
 	pod = corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -185,14 +207,12 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 						"--procprefix=/hostproc",
 						"mode",
 						"sender",
-						//TODO: Add a function to get containerID from podName
 						"--containerid=" + podInfo.containerID,
 						"--mirrortype=" + vtap.Spec.MirrorType,
 						"--ifname= mirror",
 						"--mirrorif=" + vtap.Spec.PodInterface,
 						"--pod=" + vtap.Spec.PodName,
 						"--namespace=" + vtap.Namespace,
-						//TODO: Add a function to get node's IP given podName (see kokotap)
 						"--vxlan-egressip=" + podInfo.nodeIP,
 						"--vxlan-ip=" + vtap.Spec.TargetIP,
 						"--vxlan-id=" + vtap.Spec.VxLANID,
@@ -213,9 +233,21 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 	return pod, nil
 }
 
+// ReconcileNormal is the function that will be called when the resource is not being deleted or updated
 func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
 
 	logger := log.FromContext(ctx)
+
+	// Add the finalizer to the resource if it does not exist
+
+	if !controllerutil.ContainsFinalizer(vtap, FinalizerName) {
+		controllerutil.AddFinalizer(vtap, FinalizerName)
+		if err := r.Update(ctx, vtap); err != nil {
+			logger.Error(err, "Failed to add finalizer to Kokotap", "Kokotap.Namespace", vtap.Namespace, "Kokotap.Name", vtap.Name)
+			return ctrl.Result{}, err
+		}
+		logger.Info("Added finalizer to Kokotap", "Kokotap.Namespace", vtap.Namespace, "Kokotap.Name", vtap.Name)
+	}
 
 	var pod corev1.Pod
 
@@ -238,58 +270,71 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
 	// Delete the resources
 
-	return ctrl.Result{}, nil
-}
+	logger := log.FromContext(ctx)
 
-func (r *KokotapReconciler) ReconcileUpdate(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
-	// Logic shall be added here
-	return ctrl.Result{}, nil
-}
+	// Remove the finalizer from the resource
 
-// Get ClientSet from the client.Client reconciler
-
-func GetClientSet(clientset *kubernetes.Clientset) *KokotapReconciler {
-	return &KokotapReconciler{
-		clientset: clientset,
+	if controllerutil.ContainsFinalizer(vtap, FinalizerName) {
+		controllerutil.RemoveFinalizer(vtap, FinalizerName)
+		if err := r.Update(ctx, vtap); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
+
+	// Delete the kokotapper
+
+	podname := "kokotap_" + vtap.Spec.PodName
+	pod := &corev1.Pod{}
+	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Namespace}, pod)
+	if err != nil {
+		logger.Error(err, "Failed to get Pod")
+	}
+
+	// Check kokotapper status to handle deletion
+
+	if pod.Status.Phase == corev1.PodRunning {
+		if err := r.Delete(ctx, pod); err != nil {
+			logger.Error(err, "Failed to delete Pod")
+		}
+	}
+
+	// Remove the label from the tapped pod
+
+	tappedpod := &corev1.Pod{}
+	err = r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Namespace}, tappedpod)
+	if err != nil {
+		logger.Error(err, "Failed to get Pod")
+	}
+	tappedpod.Labels["dn-vtap"] = "not-tapped"
+	if err := r.Update(ctx, tappedpod); err != nil {
+		logger.Error(err, "Failed to update Pod")
+	}
+
+	return ctrl.Result{}, nil
 }
 
-func getPodInfo(vtap *networkingv1alpha1.Kokotap, ctx context.Context) *PodInfo {
+func (r *KokotapReconciler) GetPodInfo(vtap *networkingv1alpha1.Kokotap, ctx context.Context) *PodInfo {
 
 	logger := log.FromContext(ctx)
-	//Get cluster config
-
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		logger.Error(err, "Failed to get cluster config %s")
-	}
-
-	// Create a new clientset
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		logger.Error(err, "Failed to create clientset")
-	}
 
 	// Get the pod info
 
 	TappedPodName := vtap.Spec.PodName
 	TappedNamespace := vtap.Spec.Namespace
 
-	// Get the pod info from the clientset
+	pod := &corev1.Pod{}
 
-	pod, err := clientset.CoreV1().Pods(TappedNamespace).Get(context.TODO(), TappedPodName, metav1.GetOptions{})
+	err := r.Get(ctx, types.NamespacedName{Name: TappedPodName, Namespace: TappedNamespace}, pod)
 	if err != nil {
-		logger.Error(err, "Failed to get pod info")
+		logger.Error(err, "Failed to get Pod", "Pod.Namespace", TappedNamespace, "Pod.Name", TappedPodName)
 	}
 
-	if pod.Status.ContainerStatuses == nil {
-		logger.Error(err, "ContainerStatuses is nil")
-	}
-
+	// Get the containerID
 	containerID := pod.Status.ContainerStatuses[0].ContainerID
-	nodeIP := pod.Status.HostIP
+	// Get the nodeName
 	nodeName := pod.Spec.NodeName
+	// Get the nodeIP
+	nodeIP := pod.Status.HostIP
 
 	return &PodInfo{
 		containerID: containerID,
