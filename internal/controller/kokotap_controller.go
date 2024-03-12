@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"reflect"
 
 	errors "github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -99,18 +98,12 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	// Check if the resource is being deleted
 
 	if !kokotapper.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.ReconcileDelete(ctx, req, kokotapper)
-	}
-
-	// Check if the resource is being updated
-
-	if !reflect.DeepEqual(kokotapper.Status, networkingv1alpha1.KokotapStatus{}) {
 		return r.ReconcileNormal(ctx, req, kokotapper)
 	}
 
-	// TODO(user): your logic here
+	// kokotapper has been marked for delete
 
-	return ctrl.Result{}, nil
+	return r.ReconcileDelete(ctx, req, kokotapper)
 }
 
 func (r *KokotapReconciler) GetKokotapper(ctx context.Context, req ctrl.Request) (*networkingv1alpha1.Kokotap, error) {
