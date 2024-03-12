@@ -38,23 +38,30 @@ spec:
                 description: IP address of the host which will receive the captured
                   packets
                 type: string
+              image:
+                description: Image to be used for the kokotap container
+                type: string
               mirrorType:
                 description: Type of mirror traffic
                 type: string
               namespace:
                 description: Namespace of the pod
                 type: string
+              podInterface:
+                description: Pod Interface to do the tapping (mirror traffic)
+                type: string
               podName:
                 description: Pod's name in which the packet capture should be done
                 type: string
               vxlanID:
                 description: VXLAN ID
-                format: int32
-                type: integer
+                type: string
             required:
             - destIp
+            - image
             - mirrorType
             - namespace
+            - podInterface
             - podName
             - vxlanID
             type: object

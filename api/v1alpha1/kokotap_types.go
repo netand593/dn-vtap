@@ -43,11 +43,15 @@ type KokotapSpec struct {
 	// IP address of the host which will receive the captured packets
 	TargetIP string `json:"destIp"`
 	// VXLAN ID
-	VxLANID int32 `json:"vxlanID"`
+	VxLANID string `json:"vxlanID"`
 	// Namespace of the pod
 	Namespace string `json:"namespace"`
 	// Type of mirror traffic
 	MirrorType string `json:"mirrorType"`
+	// Pod Interface to do the tapping (mirror traffic)
+	PodInterface string `json:"podInterface"`
+	// Image to be used for the kokotap container
+	Image string `json:"image"`
 
 	/* TODO
 	Check if it is needed to add kubeconfig file to the spec
