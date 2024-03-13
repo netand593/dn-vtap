@@ -106,11 +106,17 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	return r.ReconcileDelete(ctx, req, kokotapper)
 }
 
+// The function GetKokoTapper will get the kokotapper resource
+
 func (r *KokotapReconciler) GetKokotapper(ctx context.Context, req ctrl.Request) (*networkingv1alpha1.Kokotap, error) {
 	logger := log.FromContext(ctx)
 	kokotapper := &networkingv1alpha1.Kokotap{}
 	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
-		logger.Error(err, "Failed to fetch Kokotap from API Server")
+		if apierrors.IsNotFound(err) {
+			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
+			return nil, nil
+		}
+		logger.Error(err, "Failed to fetch kokotap")
 		return nil, err
 	}
 	return kokotapper, nil
@@ -129,9 +135,9 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 
 	// Get tappedpod and update labels
 
-	err := r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Namespace}, &tappedpod)
+	err := r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Spec.Namespace}, &tappedpod)
 	if err != nil {
-		logger.Error(err, "Failed to get Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+		logger.Error(err, "Failed to get Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
 	}
 
 	// Add the label to the pod
@@ -144,17 +150,17 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 	// Update the pod
 
 	if err := r.Update(ctx, &tappedpod); err != nil {
-		logger.Error(err, "Failed to update Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+		logger.Error(err, "Failed to update Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
 		return pod, err
 	}
-	logger.Info("Updated Pod successfully", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+	logger.Info("Updated Pod successfully", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
 
 	// Create the pod running kokotap_pod binary
 
 	pod = corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tappedPodName,
-			Namespace: vtap.Namespace,
+			Namespace: vtap.Spec.Namespace,
 			Labels: map[string]string{
 				"dn-vtap": "tapped",
 			},
@@ -207,7 +213,7 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 						"--ifname= mirror",
 						"--mirrorif=" + vtap.Spec.PodInterface,
 						"--pod=" + vtap.Spec.PodName,
-						"--namespace=" + vtap.Namespace,
+						"--namespace=" + vtap.Spec.Namespace,
 						"--vxlan-egressip=" + podInfo.nodeIP,
 						"--vxlan-ip=" + vtap.Spec.TargetIP,
 						"--vxlan-id=" + vtap.Spec.VxLANID,
@@ -221,10 +227,10 @@ func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Reque
 	// Create the pod
 
 	if err := r.Create(ctx, &pod); err != nil {
-		logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", tappedPodName)
+		logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", tappedPodName)
 		return pod, err
 	}
-	logger.Info("Created Pod successfully", "Pod.Namespace", vtap.Namespace, "Pod.Name", tappedPodName)
+	logger.Info("Created Pod successfully", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", tappedPodName)
 	return pod, nil
 }
 
@@ -238,10 +244,10 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 	if !controllerutil.ContainsFinalizer(vtap, FinalizerName) {
 		controllerutil.AddFinalizer(vtap, FinalizerName)
 		if err := r.Update(ctx, vtap); err != nil {
-			logger.Error(err, "Failed to add finalizer to Kokotap", "Kokotap.Namespace", vtap.Namespace, "Kokotap.Name", vtap.Name)
+			logger.Error(err, "Failed to add finalizer to Kokotap", "Kokotap.Namespace", vtap.Spec.Namespace, "Kokotap.Name", vtap.Name)
 			return ctrl.Result{}, err
 		}
-		logger.Info("Added finalizer to Kokotap", "Kokotap.Namespace", vtap.Namespace, "Kokotap.Name", vtap.Name)
+		logger.Info("Added finalizer to Kokotap", "Kokotap.Namespace", vtap.Spec.Namespace, "Kokotap.Name", vtap.Name)
 	}
 
 	var pod corev1.Pod
@@ -256,7 +262,7 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Namespace, "Pod.Name", vtap.Spec.PodName)
+		logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
 	}
 	return ctrl.Result{}, nil
 
@@ -280,7 +286,7 @@ func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Reques
 
 	podname := "kokotapped_" + vtap.Spec.PodName
 	pod := &corev1.Pod{}
-	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Namespace}, pod)
+	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Spec.Namespace}, pod)
 	if err != nil {
 		logger.Error(err, "Failed to get Pod")
 	}
@@ -296,7 +302,7 @@ func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Reques
 	// Remove the label from the tapped pod
 
 	tappedpod := &corev1.Pod{}
-	err = r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Namespace}, tappedpod)
+	err = r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Spec.Namespace}, tappedpod)
 	if err != nil {
 		logger.Error(err, "Failed to get Pod")
 	}
