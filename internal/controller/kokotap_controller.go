@@ -78,12 +78,13 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
-			return reconcile.Result{}, err
+			return reconcile.Result{}, nil
 		}
-		logger.Error(err, "Failed to fetch Kokotap from API Server")
-
-		return ctrl.Result{}, nil
+		logger.Error(err, "Failed to fetch kokotap")
+		return ctrl.Result{}, err
 	}
+
+	// Initialize the patch helper
 
 	helper, err := patch.NewHelper(kokotapper, r.Client)
 	if err != nil {
@@ -97,7 +98,7 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	}()
 	// Check if the resource is being deleted
 
-	if kokotapper.ObjectMeta.DeletionTimestamp.IsZero() {
+	if kokotapper.DeletionTimestamp.IsZero() {
 		return r.ReconcileNormal(ctx, req, kokotapper)
 	}
 
@@ -107,8 +108,10 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 }
 
 func (r *KokotapReconciler) GetKokotapper(ctx context.Context, req ctrl.Request) (*networkingv1alpha1.Kokotap, error) {
+	logger := log.FromContext(ctx)
 	kokotapper := &networkingv1alpha1.Kokotap{}
 	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
+		logger.Error(err, "Failed to fetch Kokotap from API Server")
 		return nil, err
 	}
 	return kokotapper, nil
