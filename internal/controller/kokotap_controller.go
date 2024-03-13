@@ -278,7 +278,7 @@ func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Reques
 
 	// Delete the kokotapper
 
-	podname := "kokotap_" + vtap.Spec.PodName
+	podname := "kokotapped_" + vtap.Spec.PodName
 	pod := &corev1.Pod{}
 	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Namespace}, pod)
 	if err != nil {
