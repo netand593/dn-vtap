@@ -33,9 +33,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	// +kubebuilder:scaffold:imports
-
 	networkingv1alpha1 "github.com/netand593/dn-vtap/api/v1alpha1"
+	// +kubebuilder:scaffold:imports
 )
 
 // KokotapReconciler reconciles a Kokotap object
