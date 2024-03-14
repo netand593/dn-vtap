@@ -60,6 +60,13 @@ type PodInfo struct {
 //+kubebuilder:rbac:groups=networking.dn-lab.io,resources=kokotaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.dn-lab.io,resources=kokotaps/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=networking.dn-lab.io,resources=kokotaps/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=pods/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=pods/finalizers,verbs=update
+//+kubebuilder:scaffold:rbac:groups=networking.dn-lab.io,resources=kokotaps,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:scaffold:rbac:groups=networking.dn-lab.io,resources=kokotaps/status,verbs=get;update;patch
+//+kubebuilder:scaffold:rbac:groups=networking.dn-lab.io,resources=kokotaps/finalizers,verbs=update
+//+kubebuilder:scaffold:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
