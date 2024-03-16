@@ -19,11 +19,11 @@ package controller
 import (
 	"context"
 
-	errors "github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/cluster-api/util/patch"
+
+	// "sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -92,16 +92,17 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 	// Initialize the patch helper
 
-	helper, err := patch.NewHelper(kokotapper, r.Client)
-	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to create patch helper")
-	}
-	defer func() {
-		// patch the resource stored in the API server if something changed.
-		if err := helper.Patch(ctx, kokotapper); err != nil {
-			errResult = err
-		}
-	}()
+	// helper, err := patch.NewHelper(kokotapper, r.Client)
+	// if err != nil {
+	// 	return ctrl.Result{}, errors.Wrap(err, "failed to create patch helper")
+	// }
+	// defer func() {
+	// 	// patch the resource stored in the API server if something changed.
+	// 	if err := helper.Patch(ctx, kokotapper); err != nil {
+	// 		errResult = err
+	// 	}
+	// }()
+
 	// Check if the resource is being deleted
 
 	if kokotapper.DeletionTimestamp.IsZero() {
@@ -129,7 +130,7 @@ func (r *KokotapReconciler) GetKokotapper(ctx context.Context, req ctrl.Request)
 	return kokotapper, nil
 }
 
-func (r *KokotapReconciler) CreateKokotapper(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (corev1.Pod, error) {
+func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (corev1.Pod, error) {
 
 	logger := log.FromContext(ctx)
 	var pod corev1.Pod
@@ -263,13 +264,22 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 
 	err := r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Spec.Namespace}, &pod)
 
-	if err != nil && client.IgnoreNotFound(err) != nil {
-		// Pod does not exist, create it
-		pod, err = r.CreateKokotapper(ctx, req, vtap)
-		if err != nil {
+	//if err != nil && client.IgnoreNotFound(err) != nil {
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Pod does not exist, create it
+			pod, err = r.CreateKokotapPod(ctx, req, vtap)
+			if err != nil {
+				logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
+				return ctrl.Result{}, err
+			}
+			logger.Info("Created Pod successfully", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
+			return ctrl.Result{Requeue: true}, nil
+		} else {
+			logger.Error(err, "Failed to get Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
 			return ctrl.Result{}, err
 		}
-		logger.Error(err, "Failed to create Pod", "Pod.Namespace", vtap.Spec.Namespace, "Pod.Name", vtap.Spec.PodName)
+
 	}
 	return ctrl.Result{}, nil
 
