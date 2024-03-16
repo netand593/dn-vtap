@@ -80,8 +80,8 @@ type PodInfo struct {
 func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, errResult error) {
 	logger := log.FromContext(ctx)
 
-	kokotapper := &networkingv1alpha1.Kokotap{}
-	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
+	kokotap := &networkingv1alpha1.Kokotap{}
+	if err := r.Get(ctx, req.NamespacedName, kokotap); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
 			return reconcile.Result{}, nil
@@ -90,44 +90,28 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, err
 	}
 
-	// Initialize the patch helper
-
-	// helper, err := patch.NewHelper(kokotapper, r.Client)
-	// if err != nil {
-	// 	return ctrl.Result{}, errors.Wrap(err, "failed to create patch helper")
-	// }
-	// defer func() {
-	// 	// patch the resource stored in the API server if something changed.
-	// 	if err := helper.Patch(ctx, kokotapper); err != nil {
-	// 		errResult = err
-	// 	}
-	// }()
-
-	// Check if the resource is being deleted
-
-	if kokotapper.DeletionTimestamp.IsZero() {
-		return r.ReconcileNormal(ctx, req, kokotapper)
-	}
-
-	// kokotapper has been marked for delete
-
-	return r.ReconcileDelete(ctx, req, kokotapper)
-}
-
-// The function GetKokoTapper will get the kokotapper resource
-
-func (r *KokotapReconciler) GetKokotapper(ctx context.Context, req ctrl.Request) (*networkingv1alpha1.Kokotap, error) {
-	logger := log.FromContext(ctx)
-	kokotapper := &networkingv1alpha1.Kokotap{}
-	if err := r.Get(ctx, req.NamespacedName, kokotapper); err != nil {
+	// Check if kokotpod exists, if not then create one
+	kokotapPod := &corev1.Pod{}
+	err := r.Get(ctx, types.NamespacedName{Name: "kokotapped-" + kokotap.Spec.PodName, Namespace: kokotap.Spec.Namespace}, kokotapPod)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
-			return nil, nil
+			logger.Info("Kokotap Pod not found. Creating one")
+			_, err = r.CreateKokotapPod(ctx, req, kokotap)
+			if err != nil {
+				logger.Error(err, "Failed to create Kokotap Pod")
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to fetch kokotap")
-		return nil, err
+		logger.Error(err, "Failed to fetch Kokotap Pod")
+		return ctrl.Result{}, err
 	}
-	return kokotapper, nil
+	err = r.Update(ctx, kokotap)
+	if err != nil {
+		logger.Error(err, "Failed to update Kokotap")
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (corev1.Pod, error) {
@@ -135,7 +119,7 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 	var pod corev1.Pod
 	var tappedpod corev1.Pod
-	tappedPodName := "kokotapped_" + vtap.Spec.PodName
+	tappedPodName := "kokotapped-" + vtap.Spec.PodName
 
 	// Call GetPodInfo to get the pod info
 
@@ -211,7 +195,7 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Reque
 							MountPath: "/var/run/crio/crio.sock",
 						},
 					},
-					Command: []string{"/bin/kokotap"},
+					Command: []string{"/bin/kokotap_pod"},
 					Args: []string{
 						"--procprefix=/hostproc",
 						"mode",
@@ -299,16 +283,16 @@ func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	// Delete the kokotapper
+	// Delete the kokotap
 
-	podname := "kokotapped_" + vtap.Spec.PodName
+	podname := "kokotapped-" + vtap.Spec.PodName
 	pod := &corev1.Pod{}
 	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Spec.Namespace}, pod)
 	if err != nil {
 		logger.Error(err, "Failed to get Pod")
 	}
 
-	// Check kokotapper status to handle deletion
+	// Check kokotap status to handle deletion
 
 	if pod.Status.Phase == corev1.PodRunning {
 		if err := r.Delete(ctx, pod); err != nil {
