@@ -101,6 +101,7 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 				logger.Error(err, "Failed to create Kokotap Pod")
 				return ctrl.Result{}, err
 			}
+			logger.Info("Created Kokotap Pod successfully")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Failed to fetch Kokotap Pod")
@@ -180,8 +181,9 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Reque
 			},
 			Containers: []corev1.Container{
 				{
-					Name:  "kokotap-network-tap",
-					Image: vtap.Spec.Image,
+					Name:            "kokotap-network-tap",
+					Image:           vtap.Spec.Image,
+					ImagePullPolicy: "Always",
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &[]bool{true}[0],
 					},
@@ -197,15 +199,13 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, req ctrl.Reque
 					},
 					Command: []string{"/bin/kokotap_pod"},
 					Args: []string{
-						"--procprefix=/hostproc",
+						"--procprefix=/host",
 						"mode",
 						"sender",
 						"--containerid=" + podInfo.containerID,
 						"--mirrortype=" + vtap.Spec.MirrorType,
-						"--ifname= mirror",
+						"--ifname=mirror",
 						"--mirrorif=" + vtap.Spec.PodInterface,
-						"--pod=" + vtap.Spec.PodName,
-						"--namespace=" + vtap.Spec.Namespace,
 						"--vxlan-egressip=" + podInfo.nodeIP,
 						"--vxlan-ip=" + vtap.Spec.TargetIP,
 						"--vxlan-id=" + vtap.Spec.VxLANID,
