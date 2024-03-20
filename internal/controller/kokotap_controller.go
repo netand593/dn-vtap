@@ -33,6 +33,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/go-logr/logr"
 	networkingv1alpha1 "github.com/netand593/dn-vtap/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
@@ -79,15 +80,37 @@ type PodInfo struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, errResult error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling Kokotap")
 
+	// Fetch the Kokotap instance
 	kokotap := &networkingv1alpha1.Kokotap{}
 	if err := r.Get(ctx, req.NamespacedName, kokotap); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("Kokotap resource not found. Ignoring since object must be deleted")
 			return reconcile.Result{}, nil
 		}
-		logger.Error(err, "Failed to fetch kokotap")
+		logger.Error(err, "Failed to get Kokotap object")
 		return ctrl.Result{}, err
+	}
+
+	// Check if the Kokotap instance is marked for deletion
+	isKokotapMarkedForDeletion := kokotap.GetDeletionTimestamp() != nil
+	if isKokotapMarkedForDeletion {
+		if controllerutil.ContainsFinalizer(kokotap, FinalizerName) {
+			// Run finalizer logic
+			if err := r.finalizeKokotap(ctx, logger, kokotap); err != nil {
+				logger.Error(err, "Failed to finalize Kokotap")
+				return ctrl.Result{}, err
+			}
+			// Remove finalizer from the Kokotap CR
+			controllerutil.RemoveFinalizer(kokotap, FinalizerName)
+			if err := r.Update(ctx, kokotap); err != nil {
+				logger.Error(err, "Failed to remove finalizer from Kokotap")
+				return ctrl.Result{}, err
+			}
+			logger.Info("Removed finalizer from Kokotap")
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Check if kokotpod exists, if not then create one
@@ -102,8 +125,19 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 				return ctrl.Result{}, err
 			}
 			logger.Info("Created Kokotap Pod successfully")
+			// Add finalizer to the Kokotap Custom Resource becasue the Kokotap Pod has been created
+			if !controllerutil.ContainsFinalizer(kokotap, FinalizerName) {
+				controllerutil.AddFinalizer(kokotap, FinalizerName)
+				err = r.Update(ctx, kokotap)
+				if err != nil {
+					logger.Error(err, "Failed to add finalizer to Kokotap")
+					return ctrl.Result{}, err
+				}
+				logger.Info("Added finalizer to Kokotap")
+			}
 			return ctrl.Result{}, nil
 		}
+		// Todo: Handle other errors
 		logger.Error(err, "Failed to fetch Kokotap Pod")
 		return ctrl.Result{}, err
 	}
@@ -269,50 +303,40 @@ func (r *KokotapReconciler) ReconcileNormal(ctx context.Context, req ctrl.Reques
 
 }
 
-func (r *KokotapReconciler) ReconcileDelete(ctx context.Context, req ctrl.Request, vtap *networkingv1alpha1.Kokotap) (ctrl.Result, error) {
-	// Delete the resources
-
-	logger := log.FromContext(ctx)
-
-	// Remove the finalizer from the resource
-
-	if controllerutil.ContainsFinalizer(vtap, FinalizerName) {
-		controllerutil.RemoveFinalizer(vtap, FinalizerName)
-		if err := r.Update(ctx, vtap); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	// Delete the kokotap
-
-	podname := "kokotapped-" + vtap.Spec.PodName
+// finalizeKokotap deletes the kokotap_pod and removes the label from the tapped pod
+func (r *KokotapReconciler) finalizeKokotap(ctx context.Context, logger logr.Logger, kokotap *networkingv1alpha1.Kokotap) error {
+	// Delete the kokotap_pod and remove label from the tapped pod
+	podname := "kokotapped-" + kokotap.Spec.PodName
 	pod := &corev1.Pod{}
-	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: vtap.Spec.Namespace}, pod)
+	err := r.Get(ctx, types.NamespacedName{Name: podname, Namespace: kokotap.Spec.Namespace}, pod)
 	if err != nil {
 		logger.Error(err, "Failed to get Pod")
+		return err
 	}
 
 	// Check kokotap status to handle deletion
-
 	if pod.Status.Phase == corev1.PodRunning {
 		if err := r.Delete(ctx, pod); err != nil {
 			logger.Error(err, "Failed to delete Pod")
+			return err
 		}
+		logger.Info("Deleted Pod successfully")
 	}
 
 	// Remove the label from the tapped pod
-
 	tappedpod := &corev1.Pod{}
-	err = r.Get(ctx, types.NamespacedName{Name: vtap.Spec.PodName, Namespace: vtap.Spec.Namespace}, tappedpod)
+	err = r.Get(ctx, types.NamespacedName{Name: kokotap.Spec.PodName, Namespace: kokotap.Spec.Namespace}, tappedpod)
 	if err != nil {
 		logger.Error(err, "Failed to get Pod")
+		return err
 	}
 	tappedpod.Labels["dn-vtap"] = "not-tapped"
 	if err := r.Update(ctx, tappedpod); err != nil {
 		logger.Error(err, "Failed to update Pod")
+		return err
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *KokotapReconciler) GetPodInfo(vtap *networkingv1alpha1.Kokotap, ctx context.Context) *PodInfo {

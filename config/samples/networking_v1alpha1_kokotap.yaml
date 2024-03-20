@@ -9,10 +9,10 @@ metadata:
     app.kubernetes.io/created-by: dn-vtap
   name: kokotap-sample
 spec:
-  podName: "ueransim-gnb-ues-6c7d5c7bfb-rb4q6"
+  podName: "ingress-nginx-controller-55bbd74b5f-czlqj"
   destIp: "192.168.1.109"
-  vxlanID: "1000"
-  namespace: "default"
+  vxlanID: "1001"
+  namespace: "ingress-nginx"
   mirrorType: "both"
   podInterface: "eth0"
   image: "netand593/kokotap:2.0-beta"
