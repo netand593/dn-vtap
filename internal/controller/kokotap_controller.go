@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -200,7 +201,7 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, kokotap *netwo
 						"--mirrorif=" + kokotap.Spec.PodInterface,
 						"--vxlan-egressip=" + podInfo.nodeIP,
 						"--vxlan-ip=" + kokotap.Spec.TargetIP,
-						"--vxlan-id=" + kokotap.Spec.VxLANID,
+						"--vxlan-id=" + strconv.Itoa(int(kokotap.Spec.VxLANID)),
 						"--vxlan-port=4789",
 					},
 				},
