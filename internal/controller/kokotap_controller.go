@@ -18,13 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
-	// "sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -47,6 +48,18 @@ type KokotapReconciler struct {
 const (
 	// FinalizerName is the name of the finalizer added to resources for this controller
 	FinalizerName = "kokotap.networking.dn-lab.io"
+	// Volume name for the proc volume
+	ProcVolumeName = "proc"
+	// Volume name for the docker-sock volume
+	DockerSockVolumeName = "docker-sock"
+	// Volume name for the crio-sock volume
+	CrioSockVolumeName = "crio-sock"
+	// Volume mount path for the proc volume
+	ProcVolumeMountPath = "/host/proc"
+	// Volume mount path for the docker-sock volume
+	DockerSockVolumeMountPath = "/var/run/docker.sock"
+	// Volume mount path for the crio-sock volume
+	CrioSockVolumeMountPath = "/var/run/crio/crio.sock"
 
 	//
 )
@@ -56,6 +69,7 @@ type PodInfo struct {
 	containerID string
 	nodeName    string
 	nodeIP      string
+	ClusterCRI  string
 }
 
 //+kubebuilder:rbac:groups=networking.dn-lab.io,resources=kokotaps,verbs=get;list;watch;create;update;patch;delete
@@ -141,6 +155,71 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, kokotap *netwo
 	}
 	logger.Info("Updated Pod successfully", "Pod.Namespace", kokotap.Spec.Namespace, "Pod.Name", kokotap.Spec.PodName)
 
+	// Assing values to volume and volume mounts depending on the container runtime interface
+
+	var volume []corev1.Volume
+	var volumeMount []corev1.VolumeMount
+
+	if podInfo.ClusterCRI == "docker" {
+		volume = []corev1.Volume{
+			{
+				Name: "proc",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/proc",
+					},
+				},
+			},
+			{
+				Name: "var-docker",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/var/run/docker.sock",
+					},
+				},
+			},
+		}
+		volumeMount = []corev1.VolumeMount{
+			{
+				Name:      "proc",
+				MountPath: "/host/proc",
+			},
+			{
+				Name:      "var-docker",
+				MountPath: "/var/run/docker.sock",
+			},
+		}
+	} else if podInfo.ClusterCRI == "cri-o" {
+		volume = []corev1.Volume{
+			{
+				Name: "proc",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/proc",
+					},
+				},
+			},
+			{
+				Name: "crio-sock",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/var/run/crio/crio.sock",
+					},
+				},
+			},
+		}
+		volumeMount = []corev1.VolumeMount{
+			{
+				Name:      "proc",
+				MountPath: "/host/proc",
+			},
+			{
+				Name:      "crio-sock",
+				MountPath: "/var/run/crio/crio.sock",
+			},
+		}
+	}
+
 	// Create the pod running kokotap_pod binary
 
 	pod = corev1.Pod{
@@ -154,24 +233,7 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, kokotap *netwo
 		Spec: corev1.PodSpec{
 			HostNetwork: true,
 			NodeName:    podInfo.nodeName,
-			Volumes: []corev1.Volume{
-				{
-					Name: "proc",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/proc",
-						},
-					},
-				},
-				{
-					Name: "var-crio",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/var/run/crio/crio.sock",
-						},
-					},
-				},
-			},
+			Volumes:     volume,
 			Containers: []corev1.Container{
 				{
 					Name:            "kokotap-network-tap",
@@ -180,17 +242,8 @@ func (r *KokotapReconciler) CreateKokotapPod(ctx context.Context, kokotap *netwo
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &[]bool{true}[0],
 					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "proc",
-							MountPath: "/host/proc",
-						},
-						{
-							Name:      "var-crio",
-							MountPath: "/var/run/crio/crio.sock",
-						},
-					},
-					Command: []string{"/bin/kokotap_pod"},
+					VolumeMounts: volumeMount,
+					Command:      []string{"/bin/kokotap_pod"},
 					Args: []string{
 						"--procprefix=/host",
 						"mode",
@@ -325,11 +378,27 @@ func (r *KokotapReconciler) GetPodInfo(kokotap *networkingv1alpha1.Kokotap, ctx 
 	// Get the nodeIP
 	nodeIP := pod.Status.HostIP
 
+	// Split the containerID to get the container runtime interface
+	containerIDSplit := strings.Split(containerID, "://")
+	if len(containerIDSplit) != 2 {
+		logger.Error(err, "Failed to split containerID")
+	}
+
+	clusterCRI := containerIDSplit[0]
+
+	if clusterCRI != "docker" && clusterCRI != "cri-o" {
+		err := fmt.Errorf("unsupported cri: %s", clusterCRI)
+		logger.Error(err, "Unsupported CRI")
+	} else {
+		logger.Info("Got Pod Info successfully", "Pod.Namespace", TappedNamespace, "Pod.Name", TappedPodName)
+	}
 	return &PodInfo{
-		containerID: containerID,
+		containerID: containerIDSplit[1],
 		nodeName:    nodeName,
 		nodeIP:      nodeIP,
+		ClusterCRI:  clusterCRI,
 	}
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
