@@ -393,7 +393,7 @@ func (r *KokotapReconciler) GetPodInfo(kokotap *networkingv1alpha1.Kokotap, ctx 
 		logger.Info("Got Pod Info successfully", "Pod.Namespace", TappedNamespace, "Pod.Name", TappedPodName)
 	}
 	return &PodInfo{
-		containerID: containerIDSplit[1],
+		containerID: containerID,
 		nodeName:    nodeName,
 		nodeIP:      nodeIP,
 		ClusterCRI:  clusterCRI,
