@@ -94,7 +94,7 @@ func (r *KokotapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 
 	// Check if the Kokotap instance is marked to be deleted
 
-	if kokotap.GetDeletionTimestamp().IsZero() {
+	if kokotap.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(kokotap, FinalizerName) {
 			logger.Info("Kokotap Marked for deletion, deleting")
 			return r.ReconcileDelete(ctx, kokotap)
