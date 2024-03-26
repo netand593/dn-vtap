@@ -7,12 +7,12 @@ metadata:
     app.kubernetes.io/part-of: dn-vtap
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: dn-vtap
-  name: kokotap-sample
+  name: kokotap-test-1
 spec:
-  podName: "ingress-nginx-controller-55bbd74b5f-czlqj"
+  podName: "ueransim-gnb-ues-6c7d5c7bfb-rb4q6"
   destIp: "192.168.1.109"
-  vxlanID: "1001"
-  namespace: "ingress-nginx"
+  vxlanID: "777"
+  namespace: "default"
   mirrorType: "both"
   podInterface: "eth0"
   image: "netand593/kokotap:2.0-beta"

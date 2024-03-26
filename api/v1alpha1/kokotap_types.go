@@ -43,7 +43,7 @@ type KokotapSpec struct {
 	// IP address of the host which will receive the captured packets
 	TargetIP string `json:"destIp"`
 	// VXLAN ID
-	VxLANID string `json:"vxlanID"`
+	VxLANID int32 `json:"vxlanID"`
 	// Namespace of the pod
 	Namespace string `json:"namespace"`
 	// Type of mirror traffic
