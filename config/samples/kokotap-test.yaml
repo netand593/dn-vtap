@@ -9,9 +9,9 @@ metadata:
     app.kubernetes.io/created-by: dn-vtap
   name: kokotap-test-1
 spec:
-  podName: "open5gs-amf-5fcdb4b68b-vsrjq"
+  podName: "ueransim-gnb-ues-6c7d5c7bfb-rb4q6"
   destIp: "192.168.1.109"
-  vxlanID: "1111"
+  vxlanID: "777"
   namespace: "default"
   mirrorType: "both"
   podInterface: "eth0"
