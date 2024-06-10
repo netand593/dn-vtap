@@ -1,8 +1,7 @@
 # dn-vtap
-// TODO(user): Add simple overview of use/purpose
+Here the whole code for DN-VTAP is documented. The idea is to extend Kokotap to be used as a Kubernetes Custom Resource, and managed by a Kubernetes Custom controller.
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+The code was at first auto-generated with Operator-SDK and then customized and tested accordingly, to fulfill the master thesis objectives.
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
@@ -63,7 +62,6 @@ make install
 make run
 ```
 
-**NOTE:** You can also run this in one step by running: `make install run`
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
